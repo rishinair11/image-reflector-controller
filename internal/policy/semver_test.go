@@ -18,6 +18,10 @@ package policy
 
 import (
 	"testing"
+
+	. "github.com/onsi/gomega"
+
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 )
 
 func TestNewSemVer(t *testing.T) {
@@ -56,37 +60,52 @@ func TestSemVer_Latest(t *testing.T) {
 	cases := []struct {
 		label           string
 		semverRange     string
-		versions        []string
-		expectedVersion string
+		versions        []database.Tag
+		expectedVersion database.Tag
 		expectErr       bool
 	}{
 		{
-			label:           "With valid format",
-			versions:        []string{"1.0.0", "1.0.0.1", "1.0.0p", "1.0.1", "1.2.0", "0.1.0"},
+			label: "With valid format",
+			versions: []database.Tag{
+				{Name: "1.0.0", Digest: "foo"},
+				{Name: "1.0.0.1", Digest: "bar"},
+				{Name: "1.0.0p", Digest: "baz"},
+				{Name: "1.0.1", Digest: "qux"},
+				{Name: "1.2.0", Digest: "faa"},
+				{Name: "0.1.0", Digest: "quux"},
+			},
 			semverRange:     "1.0.x",
-			expectedVersion: "1.0.1",
+			expectedVersion: database.Tag{Name: "1.0.1", Digest: "qux"},
 		},
 		{
-			label:           "With valid format prefix",
-			versions:        []string{"v1.2.3", "v1.0.0", "v0.1.0"},
+			label: "With valid format prefix",
+			versions: []database.Tag{
+				{Name: "v1.2.3", Digest: "v1.2.3-digest"},
+				{Name: "v1.0.0", Digest: "v1.0.0-digest"},
+				{Name: "v0.1.0", Digest: "v0.1.0-dig"},
+			},
 			semverRange:     "1.0.x",
-			expectedVersion: "v1.0.0",
+			expectedVersion: database.Tag{Name: "v1.0.0", Digest: "v1.0.0-digest"},
 		},
 		{
-			label:       "With invalid format prefix",
-			versions:    []string{"b1.2.3", "b1.0.0", "b0.1.0"},
+			label: "With invalid format prefix",
+			versions: []database.Tag{
+				{Name: "b1.2.3"},
+				{Name: "b1.0.0"},
+				{Name: "b0.1.0"},
+			},
 			semverRange: "1.0.x",
 			expectErr:   true,
 		},
 		{
 			label:       "With empty list",
-			versions:    []string{},
+			versions:    []database.Tag{},
 			semverRange: "1.0.x",
 			expectErr:   true,
 		},
 		{
 			label:       "With non-matching version list",
-			versions:    []string{"1.2.0"},
+			versions:    []database.Tag{{Name: "1.2.0"}},
 			semverRange: "1.0.x",
 			expectErr:   true,
 		},
@@ -94,22 +113,20 @@ func TestSemVer_Latest(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.label, func(t *testing.T) {
+			g := NewWithT(t)
+
 			policy, err := NewSemVer(tt.semverRange)
-			if err != nil {
-				t.Fatalf("returned unexpected error: %s", err)
-			}
+			g.Expect(err).NotTo(HaveOccurred())
 
 			latest, err := policy.Latest(tt.versions)
-			if tt.expectErr && err == nil {
-				t.Fatalf("expecting error, got nil")
-			}
-			if !tt.expectErr && err != nil {
-				t.Fatalf("returned unexpected error: %s", err)
+			if tt.expectErr {
+				g.Expect(err).To(HaveOccurred())
+				return
 			}
 
-			if latest != tt.expectedVersion {
-				t.Errorf("incorrect computed version returned, got '%s', expected '%s'", latest, tt.expectedVersion)
-			}
+			g.Expect(err).NotTo(HaveOccurred())
+
+			g.Expect(latest).To(Equal(&tt.expectedVersion), "incorrect computed version returned")
 		})
 	}
 }

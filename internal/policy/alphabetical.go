@@ -19,6 +19,8 @@ package policy
 import (
 	"fmt"
 	"sort"
+
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 )
 
 const (
@@ -32,6 +34,8 @@ const (
 type Alphabetical struct {
 	Order string
 }
+
+var _ Policer = &Alphabetical{}
 
 // NewAlphabetical constructs a Alphabetical object validating the provided
 // order argument
@@ -51,16 +55,25 @@ func NewAlphabetical(order string) (*Alphabetical, error) {
 }
 
 // Latest returns latest version from a provided list of strings
-func (p *Alphabetical) Latest(versions []string) (string, error) {
+func (p *Alphabetical) Latest(versions []database.Tag) (*database.Tag, error) {
 	if len(versions) == 0 {
-		return "", fmt.Errorf("version list argument cannot be empty")
+		return nil, fmt.Errorf("version list argument cannot be empty")
 	}
 
-	var sorted sort.StringSlice = versions
+	tagNames := make([]string, len(versions))
+	tagsByName := make(map[string]database.Tag, len(versions))
+	for idx, name := range versions {
+		tagNames[idx] = name.Name
+		tagsByName[name.Name] = name
+	}
+
+	var sorted sort.StringSlice = tagNames
 	if p.Order == AlphabeticalOrderDesc {
 		sort.Sort(sorted)
 	} else {
 		sort.Sort(sort.Reverse(sorted))
 	}
-	return sorted[0], nil
+	selected := tagsByName[sorted[0]]
+
+	return &selected, nil
 }

@@ -36,7 +36,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
-	"github.com/fluxcd/image-reflector-controller/internal/database"
+	"github.com/fluxcd/image-reflector-controller/internal/database/badger"
 	"github.com/fluxcd/image-reflector-controller/internal/test"
 	// +kubebuilder:scaffold:imports
 )
@@ -110,7 +110,7 @@ func TestImagePolicyReconciler_crossNamespaceRefsDisallowed(t *testing.T) {
 
 	r := &ImagePolicyReconciler{
 		Client:        builder.Build(),
-		Database:      database.NewBadgerDatabase(testBadgerDB),
+		Database:      badger.NewBadgerDatabase(testBadgerDB),
 		EventRecorder: record.NewFakeRecorder(32),
 		ACLOptions: acl.Options{
 			NoCrossNamespaceRefs: true,

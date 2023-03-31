@@ -34,7 +34,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/testenv"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
-	"github.com/fluxcd/image-reflector-controller/internal/database"
+	ircbadger "github.com/fluxcd/image-reflector-controller/internal/database/badger"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -83,7 +83,7 @@ func TestMain(m *testing.M) {
 
 	if err = (&ImageRepositoryReconciler{
 		Client:        testEnv,
-		Database:      database.NewBadgerDatabase(testBadgerDB),
+		Database:      ircbadger.NewBadgerDatabase(testBadgerDB),
 		EventRecorder: record.NewFakeRecorder(256),
 	}).SetupWithManager(testEnv, ImageRepositoryReconcilerOptions{
 		RateLimiter: controller.GetDefaultRateLimiter(),
@@ -93,7 +93,7 @@ func TestMain(m *testing.M) {
 
 	if err = (&ImagePolicyReconciler{
 		Client:        testEnv,
-		Database:      database.NewBadgerDatabase(testBadgerDB),
+		Database:      ircbadger.NewBadgerDatabase(testBadgerDB),
 		EventRecorder: record.NewFakeRecorder(256),
 	}).SetupWithManager(testEnv, ImagePolicyReconcilerOptions{
 		RateLimiter: controller.GetDefaultRateLimiter(),

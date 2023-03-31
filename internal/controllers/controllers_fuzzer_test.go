@@ -50,7 +50,7 @@ import (
 	fuzz "github.com/AdaLogics/go-fuzz-headers"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
-	"github.com/fluxcd/image-reflector-controller/internal/database"
+	ircbadger "github.com/fluxcd/image-reflector-controller/internal/database/badger"
 	"github.com/fluxcd/image-reflector-controller/internal/test"
 )
 
@@ -252,7 +252,7 @@ func initFunc() {
 
 	imageRepoReconciler = &ImageRepositoryReconciler{
 		Client:        k8sMgr.GetClient(),
-		Database:      database.NewBadgerDatabase(badgerDB),
+		Database:      ircbadger.NewBadgerDatabase(badgerDB),
 		EventRecorder: record.NewFakeRecorder(256),
 		patchOptions:  getPatchOptions(imageRepositoryOwnedConditions, "irc"),
 	}
@@ -263,7 +263,7 @@ func initFunc() {
 
 	imagePolicyReconciler = &ImagePolicyReconciler{
 		Client:        k8sMgr.GetClient(),
-		Database:      database.NewBadgerDatabase(badgerDB),
+		Database:      ircbadger.NewBadgerDatabase(badgerDB),
 		EventRecorder: record.NewFakeRecorder(256),
 		patchOptions:  getPatchOptions(imagePolicyOwnedConditions, "irc"),
 	}

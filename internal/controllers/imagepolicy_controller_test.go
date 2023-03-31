@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 	"github.com/fluxcd/image-reflector-controller/internal/policy"
 )
 
@@ -231,7 +232,7 @@ func TestImagePolicyReconciler_applyPolicy(t *testing.T) {
 		filter     *imagev1.TagFilter
 		db         *mockDatabase
 		wantErr    bool
-		wantResult string
+		wantResult *database.Tag
 	}{
 		{
 			name:    "invalid policy",
@@ -251,16 +252,21 @@ func TestImagePolicyReconciler_applyPolicy(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:       "semver, no tag filter",
-			policy:     imagev1.ImagePolicyChoice{SemVer: &imagev1.SemVerPolicy{Range: "1.0.x"}},
-			db:         &mockDatabase{TagData: []string{"1.0.0", "2.0.0", "1.0.1", "1.2.0"}},
-			wantResult: "1.0.1",
+			name:   "semver, no tag filter",
+			policy: imagev1.ImagePolicyChoice{SemVer: &imagev1.SemVerPolicy{Range: "1.0.x"}},
+			db: &mockDatabase{TagData: []database.Tag{
+				{Name: "1.0.0"},
+				{Name: "2.0.0"},
+				{Name: "1.0.1"},
+				{Name: "1.2.0"},
+			}},
+			wantResult: &database.Tag{Name: "1.0.1"},
 		},
 		{
 			name:    "invalid tag filter",
 			policy:  imagev1.ImagePolicyChoice{SemVer: &imagev1.SemVerPolicy{Range: "1.0.x"}},
 			filter:  &imagev1.TagFilter{Pattern: "[="},
-			db:      &mockDatabase{TagData: []string{"1.0.0", "1.0.1"}},
+			db:      &mockDatabase{TagData: []database.Tag{{Name: "1.0.0"}, {Name: "1.0.1"}}},
 			wantErr: true,
 		},
 		{
@@ -270,10 +276,14 @@ func TestImagePolicyReconciler_applyPolicy(t *testing.T) {
 				Pattern: "1.0.0-rc\\.(?P<num>[0-9]+)",
 				Extract: "$num",
 			},
-			db: &mockDatabase{TagData: []string{
-				"1.0.0", "1.0.0-rc.1", "1.0.0-rc.2", "1.0.0-rc.3", "1.0.1-rc.2",
+			db: &mockDatabase{TagData: []database.Tag{
+				{Name: "1.0.0"},
+				{Name: "1.0.0-rc.1"},
+				{Name: "1.0.0-rc.2"},
+				{Name: "1.0.0-rc.3"},
+				{Name: "1.0.1-rc.2"},
 			}},
-			wantResult: "1.0.0-rc.3",
+			wantResult: &database.Tag{Name: "1.0.0-rc.3"},
 		},
 		{
 			name:   "valid tag filter with alphabetical policy",
@@ -282,10 +292,14 @@ func TestImagePolicyReconciler_applyPolicy(t *testing.T) {
 				Pattern: "foo-(?P<word>[a-z]+)",
 				Extract: "$word",
 			},
-			db: &mockDatabase{TagData: []string{
-				"foo-aaa", "bar-bbb", "foo-zzz", "baz-nnn", "foo-ooo",
+			db: &mockDatabase{TagData: []database.Tag{
+				{Name: "foo-aaa"},
+				{Name: "bar-bbb"},
+				{Name: "foo-zzz"},
+				{Name: "baz-nnn"},
+				{Name: "foo-ooo"},
 			}},
-			wantResult: "foo-zzz",
+			wantResult: &database.Tag{Name: "foo-zzz"},
 		},
 	}
 

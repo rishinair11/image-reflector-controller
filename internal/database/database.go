@@ -14,11 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controllers
+package database
+
+// Tag defines the data structure used to store tags in the database.
+type Tag struct {
+	// Name represents the actual tag's value.
+	Name string `json:"name"`
+	// Digest represents the digest of the image referred to by the tag.
+	Digest string `json:"digest"`
+}
 
 // DatabaseWriter implementations record the tags for an image repository.
 type DatabaseWriter interface {
-	SetTags(repo string, tags []string) error
+	SetTags(repo string, tags []Tag) error
 }
 
 // DatabaseReader implementations get the stored set of tags for an image
@@ -27,5 +35,5 @@ type DatabaseWriter interface {
 // If no tags are availble for the repo, then implementations should return an
 // empty set of tags.
 type DatabaseReader interface {
-	Tags(repo string) ([]string, error)
+	Tags(repo string) ([]Tag, error)
 }

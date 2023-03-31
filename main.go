@@ -47,7 +47,7 @@ import (
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
 	"github.com/fluxcd/image-reflector-controller/internal/controllers"
-	"github.com/fluxcd/image-reflector-controller/internal/database"
+	ircbadger "github.com/fluxcd/image-reflector-controller/internal/database/badger"
 	"github.com/fluxcd/image-reflector-controller/internal/features"
 )
 
@@ -128,7 +128,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer badgerDB.Close()
-	db := database.NewBadgerDatabase(badgerDB)
+	db := ircbadger.NewBadgerDatabase(badgerDB)
 
 	watchNamespace := ""
 	if !watchOptions.AllNamespaces {
@@ -143,6 +143,12 @@ func main() {
 	}
 	if !shouldCache {
 		disableCacheFor = append(disableCacheFor, &corev1.Secret{}, &corev1.ConfigMap{})
+	}
+
+	fetchDigests, err := features.Enabled(features.StoreImageDigests)
+	if err != nil {
+		setupLog.Error(err, "unable to check feature gate "+features.StoreImageDigests)
+		os.Exit(1)
 	}
 
 	restConfig := client.GetConfigOrDie(clientOptions)
@@ -207,6 +213,7 @@ func main() {
 			AzureAutoLogin: azureAutoLogin,
 			GcpAutoLogin:   gcpAutoLogin,
 		},
+		FetchDigests: fetchDigests,
 	}).SetupWithManager(mgr, controllers.ImageRepositoryReconcilerOptions{
 		MaxConcurrentReconciles: concurrent,
 		RateLimiter:             helper.GetRateLimiter(rateLimiterOptions),

@@ -35,19 +35,23 @@ import (
 	"github.com/fluxcd/pkg/runtime/conditions"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 	"github.com/fluxcd/image-reflector-controller/internal/secret"
 	"github.com/fluxcd/image-reflector-controller/internal/test"
 )
 
 // mockDatabase mocks the image repository database.
 type mockDatabase struct {
-	TagData    []string
+	TagData    []database.Tag
 	ReadError  error
 	WriteError error
 }
 
+var _ database.DatabaseReader = mockDatabase{}
+var _ database.DatabaseWriter = &mockDatabase{}
+
 // SetTags implements the DatabaseWriter interface of the Database.
-func (db *mockDatabase) SetTags(repo string, tags []string) error {
+func (db *mockDatabase) SetTags(repo string, tags []database.Tag) error {
 	if db.WriteError != nil {
 		return db.WriteError
 	}
@@ -56,7 +60,7 @@ func (db *mockDatabase) SetTags(repo string, tags []string) error {
 }
 
 // Tags implements the DatabaseReader interface of the Database.
-func (db mockDatabase) Tags(repo string) ([]string, error) {
+func (db mockDatabase) Tags(repo string) ([]database.Tag, error) {
 	if db.ReadError != nil {
 		return nil, db.ReadError
 	}
@@ -324,7 +328,7 @@ func TestImageRepositoryReconciler_shouldScan(t *testing.T) {
 					ScanTime: metav1.NewTime(reconcileTime.Add(-time.Second * 30)),
 				}
 			},
-			db:           &mockDatabase{TagData: []string{"foo"}},
+			db:           &mockDatabase{TagData: []database.Tag{{Name: "foo"}}},
 			wantScan:     false,
 			wantNextScan: time.Second * 30,
 		},
@@ -339,7 +343,7 @@ func TestImageRepositoryReconciler_shouldScan(t *testing.T) {
 					ScanTime: metav1.NewTime(reconcileTime.Add(-time.Second * 30)),
 				}
 			},
-			db:           &mockDatabase{TagData: []string{"foo"}},
+			db:           &mockDatabase{TagData: []database.Tag{{Name: "foo"}}},
 			wantScan:     true,
 			wantNextScan: time.Minute,
 			wantReason:   scanReasonNewImageName,
@@ -355,7 +359,7 @@ func TestImageRepositoryReconciler_shouldScan(t *testing.T) {
 					ScanTime: metav1.NewTime(reconcileTime.Add(-time.Second * 30)),
 				}
 			},
-			db:           &mockDatabase{TagData: []string{"foo"}},
+			db:           &mockDatabase{TagData: []database.Tag{{Name: "foo"}}},
 			wantScan:     true,
 			wantNextScan: time.Minute,
 			wantReason:   scanReasonUpdatedExclusionList,
@@ -384,7 +388,7 @@ func TestImageRepositoryReconciler_shouldScan(t *testing.T) {
 					ScanTime: metav1.NewTime(reconcileTime.Add(-time.Second * 30)),
 				}
 			},
-			db:           &mockDatabase{TagData: []string{"foo"}, ReadError: errors.New("fail")},
+			db:           &mockDatabase{TagData: []database.Tag{{Name: "foo"}}, ReadError: errors.New("fail")},
 			wantErr:      true,
 			wantScan:     false,
 			wantNextScan: time.Minute,
@@ -398,7 +402,7 @@ func TestImageRepositoryReconciler_shouldScan(t *testing.T) {
 					ScanTime: metav1.NewTime(reconcileTime.Add(-time.Minute * 2)),
 				}
 			},
-			db:           &mockDatabase{TagData: []string{"foo"}},
+			db:           &mockDatabase{TagData: []database.Tag{{Name: "foo"}}},
 			wantScan:     true,
 			wantNextScan: time.Minute,
 			wantReason:   scanReasonInterval,
@@ -439,48 +443,43 @@ func TestImageRepositoryReconciler_scan(t *testing.T) {
 	defer registryServer.Close()
 
 	tests := []struct {
-		name           string
-		tags           []string
-		exclusionList  []string
-		annotation     string
-		db             *mockDatabase
-		wantErr        bool
-		wantTags       []string
-		wantLatestTags []string
+		name          string
+		tags          []string
+		exclusionList []string
+		annotation    string
+		db            *mockDatabase
+		wantErr       bool
+		wantTags      []database.Tag
 	}{
 		{
 			name:    "no tags",
 			wantErr: true,
 		},
 		{
-			name:           "simple tags",
-			tags:           []string{"a", "b", "c", "d"},
-			db:             &mockDatabase{},
-			wantTags:       []string{"a", "b", "c", "d"},
-			wantLatestTags: []string{"d", "c", "b", "a"},
+			name:     "simple tags",
+			tags:     []string{"a", "b", "c", "d"},
+			db:       &mockDatabase{},
+			wantTags: []database.Tag{{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"}},
 		},
 		{
-			name:           "simple tags, 10+",
-			tags:           []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
-			db:             &mockDatabase{},
-			wantTags:       []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
-			wantLatestTags: []string{"k", "j", "i", "h, g, f, e, d, c, b"},
+			name:     "simple tags, 10+",
+			tags:     []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+			db:       &mockDatabase{},
+			wantTags: []database.Tag{{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"}, {Name: "e"}, {Name: "f"}, {Name: "g"}, {Name: "h"}, {Name: "i"}, {Name: "j"}, {Name: "k"}},
 		},
 		{
-			name:           "with single exclusion pattern",
-			tags:           []string{"a", "b", "c", "d"},
-			exclusionList:  []string{"c"},
-			db:             &mockDatabase{},
-			wantTags:       []string{"a", "b", "d"},
-			wantLatestTags: []string{"d", "b", "a"},
+			name:          "with single exclusion pattern",
+			tags:          []string{"a", "b", "c", "d"},
+			exclusionList: []string{"c"},
+			db:            &mockDatabase{},
+			wantTags:      []database.Tag{{Name: "a"}, {Name: "b"}, {Name: "d"}},
 		},
 		{
-			name:           "with multiple exclusion pattern",
-			tags:           []string{"a", "b", "c", "d"},
-			exclusionList:  []string{"c", "a"},
-			db:             &mockDatabase{},
-			wantTags:       []string{"b", "d"},
-			wantLatestTags: []string{"d", "b"},
+			name:          "with multiple exclusion pattern",
+			tags:          []string{"a", "b", "c", "d"},
+			exclusionList: []string{"c", "a"},
+			db:            &mockDatabase{},
+			wantTags:      []database.Tag{{Name: "b"}, {Name: "d"}},
 		},
 		{
 			name:          "bad exclusion pattern",
@@ -495,12 +494,11 @@ func TestImageRepositoryReconciler_scan(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:           "with reconcile annotation",
-			tags:           []string{"a", "b"},
-			annotation:     "foo",
-			db:             &mockDatabase{},
-			wantTags:       []string{"a", "b"},
-			wantLatestTags: []string{"b", "a"},
+			name:       "with reconcile annotation",
+			tags:       []string{"a", "b"},
+			annotation: "foo",
+			db:         &mockDatabase{},
+			wantTags:   []database.Tag{{Name: "a"}, {Name: "b"}},
 		},
 	}
 
@@ -536,7 +534,7 @@ func TestImageRepositoryReconciler_scan(t *testing.T) {
 			g.Expect(err != nil).To(Equal(tt.wantErr))
 			if err == nil {
 				g.Expect(tagCount).To(Equal(len(tt.wantTags)))
-				g.Expect(r.Database.Tags(imgRepo)).To(Equal(tt.wantTags))
+				g.Expect(r.Database.Tags(imgRepo)).To(ConsistOf(tt.wantTags))
 				g.Expect(repo.Status.LastScanResult.TagCount).To(Equal(len(tt.wantTags)))
 				g.Expect(repo.Status.LastScanResult.ScanTime).ToNot(BeZero())
 				if tt.annotation != "" {

@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
-	"github.com/fluxcd/image-reflector-controller/internal/database"
+	"github.com/fluxcd/image-reflector-controller/internal/database/badger"
 	"github.com/fluxcd/image-reflector-controller/internal/test"
 	// +kubebuilder:scaffold:imports
 )
@@ -186,7 +186,7 @@ func TestImageRepositoryReconciler_repositorySuspended(t *testing.T) {
 
 	r := &ImageRepositoryReconciler{
 		Client:       builder.Build(),
-		Database:     database.NewBadgerDatabase(testBadgerDB),
+		Database:     badger.NewBadgerDatabase(testBadgerDB),
 		patchOptions: getPatchOptions(imageRepositoryOwnedConditions, "irc"),
 	}
 

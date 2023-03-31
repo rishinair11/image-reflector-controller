@@ -27,12 +27,21 @@ const (
 	// When enabled, it will cache both object types, resulting in increased
 	// memory usage and cluster-wide RBAC permissions (list and watch).
 	CacheSecretsAndConfigMaps = "CacheSecretsAndConfigMaps"
+	// StoreImageDigests toggles fetching and storing the digests for all
+	// image tags discovered for an ImageRepository.
+	//
+	// When enabled, the digest of the latest image tag will be put into the
+	// `.status.latestImageDigest` field of an ImagePolicy.
+	StoreImageDigests = "StoreImageDigests"
 )
 
 var features = map[string]bool{
 	// CacheSecretsAndConfigMaps
 	// opt-in from v0.24
 	CacheSecretsAndConfigMaps: false,
+	// StoreImageDigests
+	// opt-in
+	StoreImageDigests: false,
 }
 
 // FeatureGates contains a list of all supported feature gates and their default

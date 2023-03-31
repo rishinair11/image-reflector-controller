@@ -19,11 +19,13 @@ package policy
 import (
 	"fmt"
 	"regexp"
+
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 )
 
 // RegexFilter represents a regular expression filter
 type RegexFilter struct {
-	filtered map[string]string
+	filtered map[string]database.Tag
 
 	Regexp  *regexp.Regexp
 	Replace string
@@ -42,31 +44,35 @@ func NewRegexFilter(pattern string, replace string) (*RegexFilter, error) {
 }
 
 // Apply will construct the filtered list of tags based on the provided list of tags
-func (f *RegexFilter) Apply(list []string) {
-	f.filtered = map[string]string{}
+func (f *RegexFilter) Apply(list []database.Tag) {
+	f.filtered = map[string]database.Tag{}
 	for _, item := range list {
-		if submatches := f.Regexp.FindStringSubmatchIndex(item); len(submatches) > 0 {
-			tag := item
+		if submatches := f.Regexp.FindStringSubmatchIndex(item.Name); len(submatches) > 0 {
+			tag := item.Name
 			if f.Replace != "" {
 				result := []byte{}
-				result = f.Regexp.ExpandString(result, f.Replace, item, submatches)
+				result = f.Regexp.ExpandString(result, f.Replace, item.Name, submatches)
 				tag = string(result)
 			}
-			f.filtered[tag] = item
+			f.filtered[tag] = database.Tag{
+				Name:   item.Name,
+				Digest: item.Digest,
+			}
 		}
 	}
 }
 
 // Items returns the list of filtered tags
-func (f *RegexFilter) Items() []string {
-	var filtered []string
-	for k := range f.filtered {
-		filtered = append(filtered, k)
+func (f *RegexFilter) Items() []database.Tag {
+	var filtered []database.Tag
+	for filteredTag, v := range f.filtered {
+		v.Name = filteredTag
+		filtered = append(filtered, v)
 	}
 	return filtered
 }
 
 // GetOriginalTag returns the original tag before replace extraction
-func (f *RegexFilter) GetOriginalTag(tag string) string {
+func (f *RegexFilter) GetOriginalTag(tag string) database.Tag {
 	return f.filtered[tag]
 }

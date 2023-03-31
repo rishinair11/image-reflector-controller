@@ -16,7 +16,9 @@ limitations under the License.
 
 package policy
 
+import "github.com/fluxcd/image-reflector-controller/internal/database"
+
 // Policer is an interface representing a policy implementation type
 type Policer interface {
-	Latest([]string) (string, error)
+	Latest([]database.Tag) (*database.Tag, error)
 }

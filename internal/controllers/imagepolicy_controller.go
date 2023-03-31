@@ -48,6 +48,7 @@ import (
 	pkgreconcile "github.com/fluxcd/pkg/runtime/reconcile"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 	"github.com/fluxcd/image-reflector-controller/internal/policy"
 )
 
@@ -108,7 +109,7 @@ type ImagePolicyReconciler struct {
 	helper.Metrics
 
 	ControllerName string
-	Database       DatabaseReader
+	Database       database.DatabaseReader
 	ACLOptions     acl.Options
 
 	patchOptions []patch.Option
@@ -259,6 +260,7 @@ func (r *ImagePolicyReconciler) reconcile(ctx context.Context, sp *patch.SerialP
 
 	// Cleanup the last result.
 	obj.Status.LatestImage = ""
+	obj.Status.LatestDigest = ""
 
 	// Get ImageRepository from reference.
 	repo, err := r.getImageRepository(ctx, obj)
@@ -317,7 +319,8 @@ func (r *ImagePolicyReconciler) reconcile(ctx context.Context, sp *patch.SerialP
 	}
 
 	// Write the observations on status.
-	obj.Status.LatestImage = repo.Spec.Image + ":" + latest
+	obj.Status.LatestImage = repo.Spec.Image + ":" + latest.Name
+	obj.Status.LatestDigest = latest.Digest
 	// If the old latest image and new latest image don't match, set the old
 	// image as the observed previous image.
 	// NOTE: The following allows the previous image to be set empty when
@@ -340,7 +343,7 @@ func (r *ImagePolicyReconciler) reconcile(ctx context.Context, sp *patch.SerialP
 	}
 
 	resultImage = repo.Spec.Image
-	resultTag = latest
+	resultTag = latest.Name
 
 	conditions.Delete(obj, meta.ReadyCondition)
 
@@ -386,36 +389,37 @@ func (r *ImagePolicyReconciler) getImageRepository(ctx context.Context, obj *ima
 
 // applyPolicy reads the tags of the given repository from the internal database
 // and applies the tag filters and constraints to return the latest image.
-func (r *ImagePolicyReconciler) applyPolicy(ctx context.Context, obj *imagev1.ImagePolicy, repo *imagev1.ImageRepository) (string, error) {
+func (r *ImagePolicyReconciler) applyPolicy(ctx context.Context, obj *imagev1.ImagePolicy, repo *imagev1.ImageRepository) (*database.Tag, error) {
 	policer, err := policy.PolicerFromSpec(obj.Spec.Policy)
 	if err != nil {
-		return "", errInvalidPolicy{err: fmt.Errorf("invalid policy: %w", err)}
+		return nil, errInvalidPolicy{err: fmt.Errorf("invalid policy: %w", err)}
 	}
 
 	// Read tags from database, apply and filter is configured and compute the
 	// result.
 	tags, err := r.Database.Tags(repo.Status.CanonicalImageName)
 	if err != nil {
-		return "", fmt.Errorf("failed to read tags from database: %w", err)
+		return nil, fmt.Errorf("failed to read tags from database: %w", err)
 	}
 
 	if len(tags) == 0 {
-		return "", errNoTagsInDatabase
+		return nil, errNoTagsInDatabase
 	}
 
 	// Apply tag filter.
 	if obj.Spec.FilterTags != nil {
 		filter, err := policy.NewRegexFilter(obj.Spec.FilterTags.Pattern, obj.Spec.FilterTags.Extract)
 		if err != nil {
-			return "", errInvalidPolicy{err: fmt.Errorf("failed to filter tags: %w", err)}
+			return nil, errInvalidPolicy{err: fmt.Errorf("failed to filter tags: %w", err)}
 		}
 		filter.Apply(tags)
-		tags = filter.Items()
-		latest, err := policer.Latest(tags)
+		tagNames := filter.Items()
+		latest, err := policer.Latest(tagNames)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		return filter.GetOriginalTag(latest), nil
+		origTag := filter.GetOriginalTag(latest.Name)
+		return &origTag, nil
 	}
 	// Compute and return result.
 	return policer.Latest(tags)

@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -54,6 +55,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/reconcile"
 
 	imagev1 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 	"github.com/fluxcd/image-reflector-controller/internal/secret"
 )
 
@@ -109,10 +111,11 @@ type ImageRepositoryReconciler struct {
 
 	ControllerName string
 	Database       interface {
-		DatabaseWriter
-		DatabaseReader
+		database.DatabaseWriter
+		database.DatabaseReader
 	}
 	DeprecatedLoginOpts login.ProviderOptions
+	FetchDigests        bool
 
 	patchOptions []patch.Option
 }
@@ -516,8 +519,59 @@ func (r *ImageRepositoryReconciler) scan(ctx context.Context, obj *imagev1.Image
 		return 0, err
 	}
 
+	storedTags := make([]database.Tag, 0, len(filteredTags))
+
+	if r.FetchDigests {
+		resCh := make(chan database.Tag, len(filteredTags))
+		errCh := make(chan error, len(filteredTags))
+		var wg sync.WaitGroup
+
+		for _, tag := range filteredTags {
+			wg.Add(1)
+			go func(tag string, ch chan database.Tag) {
+				defer wg.Done()
+				res := database.Tag{
+					Name: tag,
+				}
+
+				ref := strings.Join([]string{ref.Context().Name(), tag}, ":")
+				tagRef, err := name.ParseReference(ref)
+				if err != nil {
+					errCh <- fmt.Errorf("failed parsing reference %q: %w", ref, err)
+					return
+				}
+				desc, err := remote.Head(tagRef, options...)
+				if err != nil {
+					errCh <- fmt.Errorf("failed fetching descriptor for %q: %w", tagRef.String(), err)
+					return
+				}
+				res.Digest = desc.Digest.String()
+
+				resCh <- res
+
+			}(tag, resCh)
+		}
+
+		wg.Wait()
+		close(resCh)
+		close(errCh)
+
+		for fetchErr := range errCh {
+			// return the first error we receive, all others are discarded
+			return 0, fetchErr
+		}
+
+		for t := range resCh {
+			storedTags = append(storedTags, t)
+		}
+	} else {
+		for _, tag := range filteredTags {
+			storedTags = append(storedTags, database.Tag{Name: tag})
+		}
+	}
+
 	canonicalName := ref.Context().String()
-	if err := r.Database.SetTags(canonicalName, filteredTags); err != nil {
+	if err := r.Database.SetTags(canonicalName, storedTags); err != nil {
 		return 0, fmt.Errorf("failed to set tags for %q: %w", canonicalName, err)
 	}
 

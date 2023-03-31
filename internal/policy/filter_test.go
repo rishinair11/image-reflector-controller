@@ -17,45 +17,78 @@ limitations under the License.
 package policy
 
 import (
-	"reflect"
-	"sort"
 	"testing"
+
+	"github.com/fluxcd/image-reflector-controller/internal/database"
+	. "github.com/onsi/gomega"
 )
 
 func TestRegexFilter(t *testing.T) {
 	cases := []struct {
 		label    string
-		tags     []string
+		tags     []database.Tag
 		pattern  string
 		extract  string
-		expected []string
+		expected []database.Tag
+		origTags map[string]int
 	}{
 		{
 			label:    "none",
-			tags:     []string{"a"},
-			expected: []string{"a"},
+			tags:     []database.Tag{{Name: "a", Digest: "aa"}},
+			expected: []database.Tag{{Name: "a", Digest: "aa"}},
+			origTags: map[string]int{
+				"a": 0,
+			},
 		},
 		{
-			label:    "valid pattern",
-			tags:     []string{"ver1", "ver2", "ver3", "rel1"},
-			pattern:  "^ver",
-			expected: []string{"ver1", "ver2", "ver3"},
+			label: "valid pattern",
+			tags: []database.Tag{
+				{Name: "ver1", Digest: "1rev"},
+				{Name: "ver2", Digest: "2rev"},
+				{Name: "ver3", Digest: "3rev"},
+				{Name: "rel1", Digest: "1ler"},
+			},
+			pattern: "^ver",
+			expected: []database.Tag{
+				{Name: "ver1", Digest: "1rev"},
+				{Name: "ver2", Digest: "2rev"},
+				{Name: "ver3", Digest: "3rev"},
+			},
+			origTags: map[string]int{
+				"ver1": 0,
+			},
 		},
 		{
-			label:    "valid pattern with capture group",
-			tags:     []string{"ver1", "ver2", "ver3", "rel1"},
-			pattern:  `ver(\d+)`,
-			extract:  `$1`,
-			expected: []string{"1", "2", "3"},
+			label: "valid pattern with capture group",
+			tags: []database.Tag{
+				{Name: "ver1", Digest: "foo"},
+				{Name: "ver2", Digest: "bar"},
+				{Name: "rel1", Digest: "qux"},
+				{Name: "ver3", Digest: "baz"},
+			},
+			pattern: `ver(\d+)`,
+			extract: `$1`,
+			expected: []database.Tag{
+				{Name: "1", Digest: "foo"},
+				{Name: "2", Digest: "bar"},
+				{Name: "3", Digest: "baz"},
+			},
+			origTags: map[string]int{
+				"1": 0,
+				"2": 1,
+				"3": 3,
+			},
 		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.label, func(t *testing.T) {
+			g := NewWithT(t)
 			filter := newRegexFilter(tt.pattern, tt.extract)
 			filter.Apply(tt.tags)
-			r := sort.StringSlice(filter.Items())
-			if reflect.DeepEqual(r, tt.expected) {
-				t.Errorf("incorrect value returned, got '%s', expected '%s'", r, tt.expected)
+			g.Expect(filter.Items()).To(HaveLen(len(tt.expected)))
+			g.Expect(filter.Items()).To(ContainElements(tt.expected))
+			for tagKey, idx := range tt.origTags {
+				g.Expect(filter.GetOriginalTag(tagKey)).To(Equal(tt.tags[idx]))
 			}
 		})
 	}

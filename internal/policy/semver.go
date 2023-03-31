@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/fluxcd/image-reflector-controller/internal/database"
 	"github.com/fluxcd/pkg/version"
 )
 
@@ -44,22 +45,25 @@ func NewSemVer(r string) (*SemVer, error) {
 }
 
 // Latest returns latest version from a provided list of strings
-func (p *SemVer) Latest(versions []string) (string, error) {
+func (p *SemVer) Latest(versions []database.Tag) (*database.Tag, error) {
 	if len(versions) == 0 {
-		return "", fmt.Errorf("version list argument cannot be empty")
+		return nil, fmt.Errorf("version list argument cannot be empty")
 	}
 
 	var latestVersion *semver.Version
+	var latestTag *database.Tag
 	for _, tag := range versions {
-		if v, err := version.ParseVersion(tag); err == nil {
+		tag := tag
+		if v, err := version.ParseVersion(tag.Name); err == nil {
 			if p.constraint.Check(v) && (latestVersion == nil || v.GreaterThan(latestVersion)) {
 				latestVersion = v
+				latestTag = &tag
 			}
 		}
 	}
 
-	if latestVersion != nil {
-		return latestVersion.Original(), nil
+	if latestTag != nil {
+		return latestTag, nil
 	}
-	return "", fmt.Errorf("unable to determine latest version from provided list")
+	return nil, fmt.Errorf("unable to determine latest version from provided list")
 }
