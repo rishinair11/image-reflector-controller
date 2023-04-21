@@ -504,7 +504,7 @@ func (r *ImageRepositoryReconciler) scan(ctx context.Context, obj *imagev1.Image
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	options = append(options, remote.WithContext(ctx))
+	options = append(options, remote.WithPageSize(0), remote.WithContext(ctx))
 
 	tags, err := remote.List(ref.Context(), options...)
 	if err != nil {
